@@ -1,0 +1,114 @@
+.sidebar-container {
+    width: 280px;
+    background-color: var(--bg-sidebar);
+    border-right: 1px solid var(--border-color);
+    display: flex;
+    flex-direction: column;
+    padding: 1.5rem 1rem;
+    height: 100vh;
+    overflow-y: auto;
+}
+
+.sidebar-logo {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    margin-bottom: 2.5rem;
+    padding-left: 0.5rem;
+}
+
+.logo-icon {
+    width: 38px;
+    height: 38px;
+    background: transparent;
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: white;
+}
+.logo-icon svg {
+    width: 100%;
+    height: 100%;
+    filter: drop-shadow(0 0 10px rgba(255, 109, 58, 0.4));
+}
+
+.logo-text h2 {
+    font-size: 1rem;
+    font-weight: 700;
+    line-height: 1.2;
+}
+
+.logo-text p {
+    font-size: 0.65rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+}
+
+.sidebar-section {
+    margin-bottom: 2rem;
+}
+
+.sidebar-section-title {
+    font-size: 0.7rem;
+    font-weight: 700;
+    color: #5c6375;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-bottom: 0.75rem;
+    padding-left: 0.75rem;
+}
+
+.sidebar-menu {
+    list-style: none;
+}
+
+.sidebar-menu-item {
+    display: flex;
+    align-items: center;
+    padding: 0.75rem;
+    border-radius: var(--radius-md);
+    color: var(--text-muted);
+    text-decoration: none;
+    font-weight: 500;
+    font-size: 0.85rem;
+    transition: all 0.2s ease;
+    margin-bottom: 0.25rem;
+    gap: 0.75rem;
+    cursor: pointer;
+}
+
+.sidebar-menu-item:hover {
+    background-color: var(--bg-card-hover);
+    color: var(--text-main);
+}
+
+.sidebar-menu-item.active {
+    background: rgba(255, 255, 255, 0.04);
+    color: var(--text-main);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.sidebar-menu-item .icon {
+    font-size: 1.25rem;
+    width: 24px;
+    text-align: center;
+    opacity: 0.8;
+}
+
+.sidebar-menu-item:hover .icon,
+.sidebar-menu-item.active .icon {
+    opacity: 1;
+}
+
+.sidebar-menu-item .title {
+    display: block;
+}
+
+.sidebar-menu-item .subtitle {
+    display: block;
+    font-size: 0.65rem;
+    color: #6c7383;
+    margin-top: 0.1rem;
+}

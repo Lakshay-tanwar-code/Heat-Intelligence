@@ -1,0 +1,27 @@
+# Exclude node modules and local build outputs
+node_modules
+dist
+dist-ssr
+*.local
+
+# Environment variables
+.env
+.env.*
+
+# Python virtual environment (if any)
+venv
+.venv
+env
+ENV/
+
+# Git and Vercel internal files
+.git
+.gitignore
+.vercel
+
+# Logs and OS files
+logs
+*.log
+.DS_Store
+.vscode
+.idea

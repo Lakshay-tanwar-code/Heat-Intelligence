@@ -1,0 +1,134 @@
+.route-map-container {
+    background: #0f1115;
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-lg);
+    padding: 1rem;
+    margin-bottom: 2rem;
+    position: relative;
+    overflow: hidden;
+}
+
+.route-map-header {
+    margin-bottom: 1rem;
+}
+
+.route-map-header h2 {
+    font-size: 1rem;
+    font-weight: 600;
+    color: var(--text-main);
+}
+
+.route-map-header p {
+    font-size: 0.8rem;
+    color: #8b92a5;
+    margin-top: 0.25rem;
+}
+
+.map-visual {
+    height: 350px;
+    background-color: #12141a;
+    background-image:
+        linear-gradient(rgba(255, 255, 255, 0.02) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(255, 255, 255, 0.02) 1px, transparent 1px);
+    background-size: 20px 20px;
+    border-radius: var(--radius-md);
+    position: relative;
+    border: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.map-controls {
+    position: absolute;
+    top: 1rem;
+    left: 1rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+    background: var(--bg-card);
+    padding: 0.25rem;
+    border-radius: 4px;
+    border: 1px solid var(--border-color);
+}
+
+.map-btn {
+    background: none;
+    border: none;
+    color: var(--text-main);
+    width: 24px;
+    height: 24px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+}
+
+.map-btn:hover {
+    background: rgba(255, 255, 255, 0.1);
+}
+
+/* SVG Route line styling */
+.route-path-safe {
+    stroke: var(--accent-teal);
+    stroke-width: 4;
+    fill: none;
+    stroke-dasharray: 10;
+    animation: dash 20s linear infinite;
+}
+
+.route-path-danger {
+    stroke: var(--accent-orange);
+    stroke-width: 4;
+    fill: none;
+}
+
+@keyframes dash {
+    to {
+        stroke-dashoffset: -1000;
+    }
+}
+
+.waypoint {
+    fill: var(--bg-dark);
+    stroke: var(--accent-teal);
+    stroke-width: 3;
+}
+
+.waypoint-text {
+    fill: #fff;
+    font-size: 12px;
+    font-weight: 700;
+    font-family: inherit;
+    text-anchor: middle;
+    dominant-baseline: central;
+}
+
+.heatmap-overlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+}
+
+.heat-blob {
+    position: absolute;
+    border-radius: 50%;
+    filter: blur(40px);
+    opacity: 0.4;
+}
+
+.heat-blob.danger {
+    background: var(--accent-orange);
+    width: 150px;
+    height: 150px;
+    right: 20%;
+    bottom: 20%;
+}
+
+.heat-blob.safe {
+    background: var(--accent-teal);
+    width: 200px;
+    height: 200px;
+    left: 20%;
+    top: 10%;
+}
