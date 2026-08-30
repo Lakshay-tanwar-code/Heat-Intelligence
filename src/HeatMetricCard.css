@@ -1,0 +1,83 @@
+.heat-metric-card {
+  position: relative;
+  overflow: hidden;
+  border-radius: 1rem; /* rounded-2xl */
+  border: 1px solid rgba(30, 41, 59, 0.8); /* border-slate-800/80 */
+  background-color: rgba(15, 23, 42, 0.6); /* bg-slate-900/60 */
+  padding: 1.25rem; /* p-5 */
+  backdrop-filter: blur(24px); /* backdrop-blur-xl */
+  -webkit-backdrop-filter: blur(24px);
+  box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05); /* shadow-lg */
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.heat-metric-card:hover {
+  border-color: #334155; /* hover:border-slate-700 */
+}
+
+.hmc-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.hmc-title {
+  font-size: 0.75rem; /* text-xs */
+  font-weight: 500; /* font-medium */
+  text-transform: uppercase;
+  letter-spacing: 0.05em; /* tracking-wider */
+  color: #94a3b8; /* text-slate-400 */
+}
+
+.hmc-badge {
+  font-size: 11px;
+  font-weight: 600; /* font-semibold */
+  padding: 0.125rem 0.5rem; /* py-0.5 px-2 */
+  border-radius: 9999px; /* rounded-full */
+  border: 1px solid transparent;
+}
+
+.status-critical {
+  background-color: rgba(244, 63, 94, 0.1); /* bg-rose-500/10 */
+  color: #fb7185; /* text-rose-400 */
+  border-color: rgba(244, 63, 94, 0.3); /* border-rose-500/30 */
+}
+
+.status-warning {
+  background-color: rgba(245, 158, 11, 0.1); /* bg-amber-500/10 */
+  color: #fbbf24; /* text-amber-400 */
+  border-color: rgba(245, 158, 11, 0.3); /* border-amber-500/30 */
+}
+
+.status-normal {
+  background-color: rgba(16, 185, 129, 0.1); /* bg-emerald-500/10 */
+  color: #34d399; /* text-emerald-400 */
+  border-color: rgba(16, 185, 129, 0.3); /* border-emerald-500/30 */
+}
+
+.hmc-body {
+  margin-top: 0.75rem; /* mt-3 */
+  display: flex;
+  align-items: baseline;
+  gap: 0.25rem; /* gap-1 */
+}
+
+.hmc-value {
+  font-size: 1.875rem; /* text-3xl */
+  font-weight: 700; /* font-bold */
+  letter-spacing: -0.025em; /* tracking-tight */
+  color: #ffffff; /* text-white */
+}
+
+.hmc-unit {
+  font-size: 0.875rem; /* text-sm */
+  font-weight: 500; /* font-medium */
+  color: #94a3b8; /* text-slate-400 */
+}
+
+.hmc-trend {
+  margin-top: 0.5rem; /* mt-2 */
+  font-size: 0.75rem; /* text-xs */
+  color: #94a3b8; /* text-slate-400 */
+  margin-bottom: 0;
+}

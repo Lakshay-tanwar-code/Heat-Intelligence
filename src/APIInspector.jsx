@@ -66,12 +66,10 @@ const APIInspector = () => {
                 </div>
                 <span style={{ color: '#8b92a5', fontSize: '0.72rem' }}>|</span>
                 <span style={{ color: '#a3abbb', fontSize: '0.72rem' }}>
-                    <span style={{ color: '#10b981' }}>POST</span> /v1/heat-intelligence
+                    <span style={{ color: '#10b981' }}>POST</span> /v1/heat_intelligence
                 </span>
                 <span style={{ color: '#8b92a5', fontSize: '0.72rem' }}>|</span>
                 <span style={{ color: '#ffd700', fontSize: '0.72rem' }}>Latency: {latency}ms</span>
-                <span style={{ color: '#8b92a5', fontSize: '0.72rem' }}>|</span>
-                <span style={{ color: '#a3abbb', fontSize: '0.72rem' }}>Credits remaining: 999,999</span>
                 <span style={{ color: '#8b92a5', fontSize: '0.72rem', marginLeft: 'auto' }}>
                     {isOpen ? '▼ Collapse' : '▲ Expand'} FortyGuard API Inspector
                 </span>
@@ -84,13 +82,13 @@ const APIInspector = () => {
                 <div style={{ flex: 1, padding: '1rem 1.5rem', overflowY: 'auto', borderRight: '1px solid rgba(255,255,255,0.06)' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '0.75rem' }}>
                         <span style={{ background: '#10b981', color: '#000', fontSize: '0.65rem', fontWeight: 700, padding: '2px 8px', borderRadius: '4px' }}>POST</span>
-                        <span style={{ color: '#2bd4c6', fontSize: '0.75rem' }}>https://api.fortyguard.com/v1/heat-intelligence</span>
+                        <span style={{ color: '#2bd4c6', fontSize: '0.75rem' }}>https://api.fortyguard.com/v1/heat_intelligence</span>
                     </div>
                     <div style={{ fontSize: '0.65rem', color: '#8b92a5', marginBottom: '0.4rem', textTransform: 'uppercase', letterSpacing: '1px' }}>Request Payload</div>
                     <pre style={{ margin: 0, fontSize: '0.68rem', color: '#4ade80', lineHeight: '1.6' }}>
-                        {`POST /v1/heat-intelligence HTTP/1.1
+                        {`POST /v1/heat_intelligence HTTP/1.1
 Host: api.fortyguard.com
-Authorization: Bearer 06ec39d162e2a3fc5bc6291986c41b84
+api-key: 06ec39d162e2a3fc5bc6291986c41b84
 Content-Type: application/json
 
 {

@@ -4,7 +4,11 @@ import './RouteDashboard.css';
 
 const ChangeMapView = ({ center, zoom }) => {
     const map = useMap();
-    map.setView(center, zoom);
+    useEffect(() => {
+        if (center && center[0] && center[1]) {
+            map.flyTo(center, zoom, { duration: 1.2 });
+        }
+    }, [center, zoom, map]);
     return null;
 };
 
@@ -34,6 +38,7 @@ const presetPortfolios = {
 const ThermalScore = () => {
     const [portfolioKey, setPortfolioKey] = useState("Phoenix Metro Residential");
     const [properties, setProperties] = useState(presetPortfolios["Phoenix Metro Residential"]);
+    const [selectedPropIdx, setSelectedPropIdx] = useState(null);
     const [thresholdTemp, setThresholdTemp] = useState(42);
     const [consecutiveDays, setConsecutiveDays] = useState(3);
     const [coverageLevel, setCoverageLevel] = useState("standard");
@@ -50,6 +55,7 @@ const ThermalScore = () => {
     useEffect(() => {
         if (portfolioKey !== "Custom (Enter manually)") {
             setProperties(presetPortfolios[portfolioKey]);
+            setSelectedPropIdx(null);
         }
         setAnalysisRun(false);
     }, [portfolioKey]);
@@ -57,23 +63,32 @@ const ThermalScore = () => {
     // Computed analytics
     const totalValue = properties.reduce((s, p) => s + p.value, 0);
     const totalSqft = properties.reduce((s, p) => s + p.sqft, 0);
+    const avgPricePerSqft = totalSqft > 0 ? Math.round(totalValue / totalSqft) : 0;
+
     const exceedance = Math.max(0, simulatedPeak - thresholdTemp);
     const daysOverThreshold = exceedance > 0 ? Math.min(14, consecutiveDays + Math.floor(exceedance * 0.8)) : 0;
     const triggerMet = daysOverThreshold >= consecutiveDays;
 
+    const coverageMultiplier = coverageLevel === 'basic' ? 0.75 : coverageLevel === 'premium' ? 1.35 : 1.0;
     const damageMultiplier = triggerMet ? 1 + (exceedance * 0.02) : 1;
-    const premiumEstimate = (totalValue * 0.0018 * damageMultiplier).toFixed(0);
-    const payoutEstimate = triggerMet ? (totalValue * 0.005 * exceedance / 10).toFixed(0) : 0;
+    const basePremiumRate = 0.0018; // 0.18% base
+    const effectiveRatePct = (basePremiumRate * damageMultiplier * coverageMultiplier * 100).toFixed(3);
+    const premiumEstimate = (totalValue * basePremiumRate * damageMultiplier * coverageMultiplier).toFixed(0);
+    const payoutEstimate = triggerMet ? (totalValue * 0.005 * (exceedance || 1) / 10).toFixed(0) : 0;
 
     const avgAge = properties.length > 0 ? (new Date().getFullYear() - properties.reduce((s, p) => s + p.yearBuilt, 0) / properties.length).toFixed(0) : 0;
     const depreciationRisk = simulatedPeak > 45 ? 'High' : simulatedPeak > 40 ? 'Moderate' : 'Low';
     const depreciationColor = simulatedPeak > 45 ? '#f93e3e' : simulatedPeak > 40 ? '#ffd700' : '#2bd4c6';
 
     // Street-level heat index and parametric trigger determination
-    const distribution = properties.map(p => {
+    const distribution = properties.map((p, idx) => {
         const baseScore = 50 + (new Date().getFullYear() - p.yearBuilt) * 0.5 + (simulatedPeak - 35) * 3;
         const score = Math.min(100, Math.max(10, Math.floor(baseScore)));
-        const streetTemp = Number((simulatedPeak + (score - 50) * 0.08).toFixed(1));
+        const uhiOffset = Number(((score - 50) * 0.08).toFixed(1));
+        const streetTemp = Number((simulatedPeak + uhiOffset).toFixed(1));
+        const streetTempF = Number((streetTemp * 1.8 + 32).toFixed(1));
+        const heatIndexF = Number((streetTempF + (score / 10)).toFixed(1));
+        const pricePerSqft = p.sqft > 0 ? Math.round(p.value / p.sqft) : 0;
 
         let triggerTier = 'Clear';
         let tierColor = '#2bd4c6';
@@ -89,7 +104,7 @@ const ThermalScore = () => {
             tierColor = '#ffd700';
         }
 
-        return { ...p, score, streetTemp, triggerTier, tierColor };
+        return { ...p, idx, score, uhiOffset, streetTemp, streetTempF, heatIndexF, pricePerSqft, triggerTier, tierColor };
     });
 
     const tier1Count = distribution.filter(d => d.triggerTier.includes('Tier 1')).length;
@@ -112,7 +127,7 @@ const ThermalScore = () => {
                 console.error("Geocoding failed:", e);
             }
 
-            setProperties(prev => [...prev, {
+            const newProp = {
                 address: newAddr,
                 type: newType,
                 sqft: parseInt(newSqft) || 100000,
@@ -120,13 +135,20 @@ const ThermalScore = () => {
                 value: parseInt(newValue) || 5000000,
                 lat,
                 lng
-            }]);
+            };
+
+            setProperties(prev => {
+                const next = [...prev, newProp];
+                setSelectedPropIdx(next.length - 1);
+                return next;
+            });
             setNewAddr(""); setNewSqft(""); setNewValue("");
         }
     };
 
     const handleRemoveProperty = (idx) => {
         setProperties(prev => prev.filter((_, i) => i !== idx));
+        if (selectedPropIdx === idx) setSelectedPropIdx(null);
     };
 
     console.log("ThermalScore Metrics Data:", {
@@ -226,28 +248,44 @@ const ThermalScore = () => {
                 </div>
 
                 {/* Property Table and Map */}
-                <div style={{ display: 'flex', gap: '1rem', marginTop: '1rem', height: '280px' }}>
+                <div style={{ display: 'flex', gap: '1rem', marginTop: '1rem', height: '320px' }}>
                     {properties.length > 0 && (
-                        <div style={{ flex: 1, overflowY: 'auto' }}>
+                        <div style={{ flex: 1.1, overflowY: 'auto', border: '1px solid rgba(255,255,255,0.06)', borderRadius: '8px', padding: '0.5rem' }}>
+                            <div style={{ fontSize: '0.72rem', color: '#8b92a5', marginBottom: '0.4rem', fontWeight: 600 }}>
+                                💡 Click any address row to locate & center map on property
+                            </div>
                             <table style={{ width: '100%', fontSize: '0.78rem', color: '#f0f2f5', borderCollapse: 'collapse' }}>
                                 <thead>
                                     <tr style={{ borderBottom: '1px solid var(--border-color)' }}>
                                         <th style={{ textAlign: 'left', padding: '0.4rem', color: '#8b92a5', fontWeight: 500 }}>Address</th>
                                         <th style={{ textAlign: 'left', padding: '0.4rem', color: '#8b92a5', fontWeight: 500 }}>Type</th>
                                         <th style={{ textAlign: 'right', padding: '0.4rem', color: '#8b92a5', fontWeight: 500 }}>Sq.Ft</th>
-                                        <th style={{ textAlign: 'right', padding: '0.4rem', color: '#8b92a5', fontWeight: 500 }}>Value</th>
+                                        <th style={{ textAlign: 'right', padding: '0.4rem', color: '#8b92a5', fontWeight: 500 }}>Plot Val. ($/sqft)</th>
                                         <th style={{ textAlign: 'center', padding: '0.4rem', color: '#8b92a5', fontWeight: 500 }}></th>
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    {properties.map((p, i) => (
-                                        <tr key={i} style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
-                                            <td style={{ padding: '0.4rem' }}>{p.address}</td>
+                                    {distribution.map((p, i) => (
+                                        <tr 
+                                            key={i} 
+                                            onClick={() => setSelectedPropIdx(i)}
+                                            style={{ 
+                                                borderBottom: '1px solid rgba(255,255,255,0.04)', 
+                                                cursor: 'pointer',
+                                                background: selectedPropIdx === i ? 'rgba(43,212,198,0.14)' : 'transparent',
+                                                transition: 'background 0.2s ease'
+                                            }}
+                                        >
+                                            <td style={{ padding: '0.4rem', fontWeight: selectedPropIdx === i ? 700 : 400, color: selectedPropIdx === i ? '#2bd4c6' : '#f0f2f5' }}>
+                                                {p.address}
+                                            </td>
                                             <td style={{ padding: '0.4rem', color: '#a3abbb' }}>{p.type}</td>
                                             <td style={{ padding: '0.4rem', textAlign: 'right' }}>{(p.sqft).toLocaleString()}</td>
-                                            <td style={{ padding: '0.4rem', textAlign: 'right', color: '#2bd4c6' }}>${(p.value / 1e6).toFixed(1)}M</td>
+                                            <td style={{ padding: '0.4rem', textAlign: 'right', color: '#2bd4c6' }}>
+                                                ${(p.value / 1e6).toFixed(1)}M (${p.pricePerSqft}/sq.ft)
+                                            </td>
                                             <td style={{ padding: '0.4rem', textAlign: 'center' }}>
-                                                <button onClick={() => handleRemoveProperty(i)} style={{ background: 'none', border: 'none', color: '#f93e3e', cursor: 'pointer', fontSize: '0.9rem' }}>✕</button>
+                                                <button onClick={(e) => { e.stopPropagation(); handleRemoveProperty(i); }} style={{ background: 'none', border: 'none', color: '#f93e3e', cursor: 'pointer', fontSize: '0.9rem' }}>✕</button>
                                             </td>
                                         </tr>
                                     ))}
@@ -255,23 +293,52 @@ const ThermalScore = () => {
                             </table>
                         </div>
                     )}
-                    <div style={{ flex: 1, borderRadius: '8px', overflow: 'hidden', border: '1px solid rgba(255,255,255,0.1)' }}>
+                    <div style={{ flex: 1, borderRadius: '8px', overflow: 'hidden', border: '1px solid rgba(255,255,255,0.1)', position: 'relative' }}>
                         {properties.length > 0 ? (
-                            <MapContainer center={[properties[0].lat || 33.45, properties[0].lng || -112.07]} zoom={4} style={{ height: '100%', width: '100%', background: '#0a0a0a' }}>
+                            <MapContainer 
+                                center={selectedPropIdx !== null && properties[selectedPropIdx] ? [properties[selectedPropIdx].lat || 33.45, properties[selectedPropIdx].lng || -112.07] : [properties[0].lat || 33.45, properties[0].lng || -112.07]} 
+                                zoom={selectedPropIdx !== null ? 14 : 9} 
+                                style={{ height: '100%', width: '100%', background: '#0a0a0a' }}
+                            >
                                 <TileLayer
-                                    url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
-                                    attribution='&copy; CARTO'
+                                    url="https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}"
+                                    attribution='&copy; Esri'
                                 />
-                                <ChangeMapView center={[properties[properties.length-1].lat || 33.45, properties[properties.length-1].lng || -112.07]} zoom={properties.length === 1 ? 12 : (portfolioKey === 'National Industrial' ? 4 : 9)} />
+                                <ChangeMapView 
+                                    center={selectedPropIdx !== null && properties[selectedPropIdx] ? [properties[selectedPropIdx].lat || 33.45, properties[selectedPropIdx].lng || -112.07] : (properties.length > 0 ? [properties[properties.length - 1].lat || 33.45, properties[properties.length - 1].lng || -112.07] : [33.45, -112.07])} 
+                                    zoom={selectedPropIdx !== null ? 14 : (properties.length === 1 ? 12 : (portfolioKey === 'National Industrial' ? 4 : 9))} 
+                                />
                                 {distribution.map((p, i) => {
+                                    const isSelected = selectedPropIdx === i;
                                     return (
-                                        <CircleMarker key={i} center={[p.lat || 33.45, p.lng || -112.07]} radius={10} pathOptions={{ color: p.tierColor, fillColor: p.tierColor, fillOpacity: 0.6 }}>
+                                        <CircleMarker 
+                                            key={i} 
+                                            center={[p.lat || 33.45, p.lng || -112.07]} 
+                                            radius={isSelected ? 14 : 10} 
+                                            pathOptions={{ 
+                                                color: isSelected ? '#ffffff' : p.tierColor, 
+                                                fillColor: p.tierColor, 
+                                                fillOpacity: isSelected ? 0.95 : 0.65,
+                                                weight: isSelected ? 3 : 1
+                                            }}
+                                            eventHandlers={{
+                                                click: () => setSelectedPropIdx(i)
+                                            }}
+                                        >
                                             <Popup>
-                                                <b>{p.address}</b><br/>
-                                                Street Temp: <b>{p.streetTemp}°C</b><br/>
-                                                Heat Score: {p.score}/100<br/>
-                                                Trigger: <span style={{ color: p.tierColor, fontWeight: 'bold' }}>{p.triggerTier}</span><br/>
-                                                Value: ${(p.value / 1e6).toFixed(1)}M
+                                                <div style={{ fontFamily: 'sans-serif', fontSize: '0.82rem' }}>
+                                                    <b style={{ color: '#101318', fontSize: '0.9rem' }}>{p.address}</b><br/>
+                                                    <div style={{ marginTop: '4px', padding: '4px 0', borderTop: '1px solid #ccc' }}>
+                                                        Property Type: <b>{p.type}</b><br/>
+                                                        Plot Sq.Ft: <b>{p.sqft.toLocaleString()} sq.ft</b><br/>
+                                                        Valuation: <b>${(p.value / 1e6).toFixed(2)}M (${p.pricePerSqft}/sq.ft)</b><br/>
+                                                        Ambient Base Temp: <b>{simulatedPeak}°C</b><br/>
+                                                        Street Microclimate Temp: <b style={{ color: '#d97706' }}>{p.streetTemp}°C ({p.streetTempF}°F)</b><br/>
+                                                        Heat Index Distribution: <b style={{ color: '#dc2626' }}>{p.heatIndexF}°F</b><br/>
+                                                        UHI Microclimate Offset: <b>+{p.uhiOffset}°C</b><br/>
+                                                        Parametric Trigger: <span style={{ color: p.tierColor, fontWeight: 'bold' }}>{p.triggerTier}</span>
+                                                    </div>
+                                                </div>
                                             </Popup>
                                         </CircleMarker>
                                     )
@@ -279,7 +346,7 @@ const ThermalScore = () => {
                             </MapContainer>
                         ) : (
                             <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#8b92a5', fontSize: '0.8rem' }}>
-                                No properties to map.
+                                No properties to map. Add an address above to locate on map.
                             </div>
                         )}
                     </div>
@@ -295,9 +362,15 @@ const ThermalScore = () => {
                             Set the temperature threshold and consecutive-day requirement. When FortyGuard detects conditions exceeding these limits, the policy pays out automatically — no adjuster needed.
                         </p>
                     </div>
-                    <div style={{ background: 'rgba(255,255,255,0.03)', padding: '0.75rem', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.05)', fontSize: '0.7rem', color: '#a3abbb', width: '280px' }}>
-                        <div style={{ color: '#f0f2f5', fontWeight: 'bold', marginBottom: '4px' }}>Pricing & Valuation Engine</div>
-                        Property values default to estimated commercial replacement costs. Base premium is calculated at an industry-standard <b style={{color: '#2bd4c6'}}>0.18%</b> of total insured value, scaled by the chosen tier and historical heat risk modifier.
+                    <div style={{ background: 'rgba(255,255,255,0.03)', padding: '0.85rem', borderRadius: '8px', border: '1px solid rgba(43,212,198,0.25)', fontSize: '0.72rem', color: '#a3abbb', width: '330px' }}>
+                        <div style={{ color: '#2bd4c6', fontWeight: 'bold', marginBottom: '6px', fontSize: '0.8rem' }}>📊 Valuation & Premium Rate Formula</div>
+                        <div>• <b>Avg Plot Valuation:</b> <span style={{ color: '#ffd700' }}>${avgPricePerSqft}/sq.ft</span> (${(totalValue / 1e6).toFixed(1)}M total)</div>
+                        <div>• <b>Base Policy Rate:</b> <span style={{ color: '#2bd4c6' }}>0.18% / yr</span> ($180 / $100k valuation)</div>
+                        <div>• <b>Heat Hazard Surcharge:</b> <span style={{ color: '#ff6d3a' }}>+{((damageMultiplier - 1) * 100).toFixed(1)}%</span> ({exceedance}°C over threshold)</div>
+                        <div>• <b>Coverage Factor:</b> <span style={{ color: '#93c5fd' }}>{coverageMultiplier}x</span> ({coverageLevel})</div>
+                        <div style={{ marginTop: '6px', paddingTop: '6px', borderTop: '1px solid rgba(255,255,255,0.08)', fontWeight: 700, color: '#f0f2f5' }}>
+                            Effective Premium Rate: <span style={{ color: '#2bd4c6' }}>{effectiveRatePct}% / year</span>
+                        </div>
                     </div>
                 </div>
 

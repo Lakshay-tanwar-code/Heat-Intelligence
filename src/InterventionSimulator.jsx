@@ -74,8 +74,8 @@ const HeatMapCanvas = ({ interventions, isBaseline }) => {
         <div style={{ position: 'relative', width: '100%', height: '100%', borderRadius: '8px', overflow: 'hidden' }}>
             <MapContainer center={center} zoom={15} style={{ width: '100%', height: '100%', background: '#0a0a0a' }} zoomControl={false}>
                 <TileLayer
-                    url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
-                    attribution='&copy; CARTO'
+                    url="https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}"
+                    attribution='&copy; Esri'
                 />
 
                 {/* Thermal Hotspot Circles */}
@@ -167,24 +167,44 @@ const InterventionSimulator = () => {
             setApiError(false);
 
             try {
-                const response = await fetch('https://api.fortyguard.com/v1/heat-intelligence', {
+                const url = '/api/heat_intelligence';
+                const headers = {
+                    'Content-Type': 'application/json'
+                };
+                const body = JSON.stringify({ intervention: found.label, area: 'Phoenix, AZ' });
+
+                console.log("Outgoing Request URL:", url);
+                console.log("Outgoing Request Headers:", headers);
+
+                const response = await fetch(url, {
                     method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'Authorization': `Bearer ${import.meta.env.VITE_FORTYGUARD_API_KEY}`
-                    },
-                    body: JSON.stringify({ intervention: found.title, area: 'Phoenix, AZ' })
+                    headers: headers,
+                    body: body
                 });
 
+                if (response.status === 200) {
+                    console.log(`Frontend [heat_intelligence]: 200 OK`);
+                } else if (response.status === 401) {
+                    console.error(`Frontend [heat_intelligence]: 401 API key invalid/missing.`);
+                } else if (response.status === 429) {
+                    console.error(`Frontend [heat_intelligence]: 429 Rate limit exceeded.`);
+                } else if (response.status >= 500 || response.status === 0) {
+                    console.error(`Frontend [heat_intelligence]: ${response.status} Server/CORS Error.`);
+                }
+
+                const data = await response.json().catch(() => null);
+                console.log("Raw API Response:", data);
+
                 if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
-                
-                // const data = await response.json();
                 setDroppedInterventions(prev => [...prev, found]);
                 setSimulated(true);
             } catch (error) {
                 console.error("FortyGuard AI Simulation Failed:", error.message);
+                console.log("Falling back to local simulation data.");
                 setApiError(true);
-                setDroppedInterventions([]);
+                // Fallback: Apply the intervention visually even if API fails
+                setDroppedInterventions(prev => [...prev, found]);
+                setSimulated(true);
             } finally {
                 setLoading(false);
             }

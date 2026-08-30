@@ -7,7 +7,6 @@ import ThermalScore from './ThermalScore';
 import CoolScope from './CoolScope';
 import CarbonLens from './CarbonLens';
 import Overview from './Overview';
-import AICopilot from './AICopilot';
 import APIInspector from './APIInspector';
 import './index.css';
 
@@ -34,7 +33,6 @@ function App() {
         {renderContent()}
       </main>
       {/* Global persistent overlays */}
-      <AICopilot />
       <APIInspector />
     </div>
   );

@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import './RouteDashboard.css';
 import jsPDF from 'jspdf';
-import 'jspdf-autotable';
+import autoTable from 'jspdf-autotable';
 
 const cities = [
     { name: "Phoenix, AZ", baseAQI: 95, basePM25: 22.1, baseO3: 0.082, baseTemp: 42 },
@@ -86,63 +86,146 @@ const CarbonLens = () => {
         setDownloading(true);
         try {
             const doc = new jsPDF();
+            const pageWidth = doc.internal.pageSize.width;
+            const pageHeight = doc.internal.pageSize.height;
 
-            // Header
-            doc.setFontSize(22);
+            // Helper for footers
+            const addFooter = (doc, pageNum) => {
+                doc.setFontSize(8);
+                doc.setTextColor(150, 150, 150);
+                doc.text(`FortyGuard AntiGravity AI Engine — Confidential / Enterprise — Page ${pageNum}`, 14, pageHeight - 10);
+            };
+
+            // ---- PAGE 1: COVER & EXECUTIVE SUMMARY ----
+            // Header Bar
+            doc.setFillColor(15, 23, 42); // Dark slate
+            doc.rect(0, 0, pageWidth, 40, 'F');
+            
+            doc.setFontSize(24);
+            doc.setTextColor(255, 255, 255);
+            doc.setFont("helvetica", "bold");
+            doc.text('CarbonLens Data Science Report', 14, 25);
+            
+            doc.setFontSize(10);
+            doc.setTextColor(200, 200, 200);
+            doc.setFont("helvetica", "normal");
+            doc.text(`Generated: ${new Date().toLocaleString()} | Hub: ${selectedCity.name}`, 14, 32);
+
+            // Core Metrics Table
+            doc.setFontSize(16);
             doc.setTextColor(30, 30, 30);
-            doc.text('FortyGuard ESG & Emissions Report', 14, 20);
+            doc.setFont("helvetica", "bold");
+            doc.text('Executive Summary', 14, 55);
 
-            doc.setFontSize(11);
-            doc.setTextColor(100, 100, 100);
-            doc.text(`Generated on: ${new Date().toLocaleDateString()}`, 14, 28);
-
-            // Core Metrics
-            doc.setFontSize(14);
-            doc.setTextColor(50, 50, 50);
-            doc.text('Executive Summary', 14, 40);
-
-            doc.autoTable({
-                startY: 45,
+            autoTable(doc, {
+                startY: 60,
                 theme: 'grid',
-                headStyles: { fillColor: [139, 92, 246] },
-                head: [['Parameter', 'Value', 'Details']],
+                headStyles: { fillColor: [139, 92, 246], fontSize: 11 },
+                bodyStyles: { fontSize: 10 },
+                head: [['Parameter', 'Analyzed Value', 'Simulation Details']],
                 body: [
                     ['Report Year', reportYear, 'Simulated'],
-                    ['City / Metro', selectedCity.name, 'FortyGuard Hub'],
-                    ['Industry Sector', selectedSector.name, `${selectedSector.carbonIntensity} gCO2/kWh base`],
-                    ['Composite ESG Score', esgScore, 'Based on AQI & Carbon offsets'],
-                    ['Compound Risk', compoundRisk, `AQI ${adjustedAQI} @ ${effectiveTemp}°C`],
-                    ['Carbon Tracked', `${carbonFootprint} gCO2/kWh`, 'Heat adjusted emissions'],
+                    ['City / Metro', selectedCity.name, 'FortyGuard Hub / Geolocation'],
+                    ['Industry Sector', selectedSector.name, `${selectedSector.carbonIntensity} gCO2/kWh baseline`],
+                    ['Composite ESG Score', esgScore, 'Based on AQI & Carbon offset trajectory'],
+                    ['Compound Risk', compoundRisk, `AQI ${adjustedAQI} @ ${effectiveTemp}°C Peak`],
+                    ['Carbon Tracked', `${carbonFootprint} gCO2/kWh`, 'Thermodynamic heat-adjusted emissions'],
                     ['Offset Progress', `${offsetProgress}%`, 'Toward 2030 Neutrality Target']
                 ]
             });
 
-            // 7 Day Forecast
-            const finalY = doc.lastAutoTable.finalY || 100;
-            doc.setFontSize(14);
-            doc.text('7-Day Compound Risk Forecast', 14, finalY + 15);
+            // Statistical Analysis
+            const temps = forecast.map(d => parseFloat(d.temp));
+            const aqis = forecast.map(d => d.aqi);
+            const meanTemp = (temps.reduce((a, b) => a + b, 0) / temps.length).toFixed(2);
+            const maxTemp = Math.max(...temps).toFixed(2);
+            const meanAQI = (aqis.reduce((a, b) => a + b, 0) / aqis.length).toFixed(1);
+            
+            // Variance / Std Dev for Temp
+            const variance = temps.reduce((sum, val) => sum + Math.pow(val - meanTemp, 2), 0) / temps.length;
+            const stdDev = Math.sqrt(variance).toFixed(2);
+
+            let finalY = doc.lastAutoTable.finalY + 15;
+            doc.setFontSize(16);
+            doc.text('7-Day Statistical Analysis', 14, finalY);
+
+            autoTable(doc, {
+                startY: finalY + 5,
+                theme: 'striped',
+                headStyles: { fillColor: [43, 212, 198], fontSize: 11 },
+                head: [['Metric', 'Temperature (°C)', 'Air Quality Index (AQI)']],
+                body: [
+                    ['Mean (μ)', meanTemp, meanAQI],
+                    ['Maximum Peak', maxTemp, Math.max(...aqis)],
+                    ['Minimum Base', Math.min(...temps).toFixed(2), Math.min(...aqis)],
+                    ['Standard Deviation (σ)', stdDev, (Math.sqrt(aqis.reduce((sum, val) => sum + Math.pow(val - meanAQI, 2), 0) / aqis.length)).toFixed(2)]
+                ]
+            });
+            addFooter(doc, 1);
+
+            // ---- PAGE 2: TIMESERIES & FORECAST ----
+            doc.addPage();
+            
+            doc.setFontSize(16);
+            doc.setTextColor(30, 30, 30);
+            doc.setFont("helvetica", "bold");
+            doc.text('Granular 12-Hour Telemetry (Regression Data)', 14, 20);
+
+            const timeseriesBody = twelveHourForecast.map(d => [
+                d.time,
+                `${d.temp} °C`,
+                d.aqi.toString(),
+                d.o3,
+                d.risk ? 'CRITICAL RISK' : 'Nominal'
+            ]);
+
+            autoTable(doc, {
+                startY: 25,
+                theme: 'grid',
+                headStyles: { fillColor: [30, 41, 59], fontSize: 10 },
+                columnStyles: { 4: { fontStyle: 'bold' } },
+                didParseCell: function (data) {
+                    if (data.section === 'body' && data.column.index === 4) {
+                        if (data.cell.raw === 'CRITICAL RISK') {
+                            data.cell.styles.textColor = [220, 38, 38]; // Red
+                        } else {
+                            data.cell.styles.textColor = [22, 163, 74]; // Green
+                        }
+                    }
+                },
+                head: [['Time (Local)', 'Surface Temp', 'AQI', 'Ozone (ppm)', 'Compound Risk Flag']],
+                body: timeseriesBody
+            });
+
+            finalY = doc.lastAutoTable.finalY + 15;
+            doc.setFontSize(16);
+            doc.setTextColor(30, 30, 30);
+            doc.text('7-Day Compliance Forecast', 14, finalY);
 
             const forecastBody = forecast.map(d => [
                 d.day,
                 `${d.temp} °C`,
                 d.aqi.toString(),
-                d.risk ? 'HIGH RISK (SEC DISCLOSURE REQ.)' : 'Nominal'
+                d.risk ? 'DISCLOSURE REQUIRED' : 'Compliant'
             ]);
 
-            doc.autoTable({
-                startY: finalY + 20,
+            autoTable(doc, {
+                startY: finalY + 5,
                 theme: 'striped',
                 headStyles: { fillColor: [43, 212, 198] },
-                head: [['Day', 'Max Temp', 'AQI', 'Compliance Status']],
+                didParseCell: function (data) {
+                    if (data.section === 'body' && data.column.index === 3 && data.cell.raw === 'DISCLOSURE REQUIRED') {
+                        data.cell.styles.textColor = [220, 38, 38];
+                    }
+                },
+                head: [['Day', 'Max Temp', 'AQI', 'SEC Compliance Status']],
                 body: forecastBody
             });
 
-            // Footer
-            doc.setFontSize(9);
-            doc.setTextColor(150, 150, 150);
-            doc.text('FortyGuard AntiGravity AI Engine — Confidential / Enterprise', 14, doc.internal.pageSize.height - 10);
+            addFooter(doc, 2);
 
-            doc.save(`FortyGuard_${selectedCity.name.replace(/, /g, '_')}_ESG_${reportYear}.pdf`);
+            // Export
+            doc.save(`FortyGuard_${selectedCity.name.replace(/, /g, '_')}_Analytics_${reportYear}.pdf`);
         } catch (err) {
             console.error(err);
             alert("Failed to generate PDF. Check console.");
@@ -304,7 +387,7 @@ const CarbonLens = () => {
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
                     <h3>📡 FortyGuard API — 12-Hour Heat & Air-Quality Production Forecast</h3>
                     <span className="badge" style={{ background: 'rgba(43, 212, 198, 0.15)', color: '#2bd4c6' }}>
-                        Live Stream: /v1/heat-intelligence
+                        Live Stream: /v1/heat_intelligence
                     </span>
                 </div>
                 <p style={{ fontSize: '0.8rem', color: '#8b92a5', marginBottom: '1rem' }}>

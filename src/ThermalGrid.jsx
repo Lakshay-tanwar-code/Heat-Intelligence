@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { MapContainer, TileLayer, Marker, Popup, useMap, SVGOverlay } from 'react-leaflet';
+import { MapContainer, TileLayer, Marker, Popup, useMap, SVGOverlay, GeoJSON } from 'react-leaflet';
 import L from 'leaflet';
+import { MapLayerControls } from './MapLayerControls';
 import './RouteDashboard.css';
 
 // Custom CSS for the advanced weather map overlay
@@ -88,12 +89,36 @@ const advancedMapStyles = `
   border-radius: 2px;
   background: linear-gradient(90deg, #ffd700, #ff6d3a);
 }
+.radar-pulse {
+  position: relative;
+  width: 14px;
+  height: 14px;
+  background: #f93e3e;
+  border-radius: 50%;
+  border: 2px solid #fff;
+  box-shadow: 0 0 10px rgba(0,0,0,0.5);
+}
+.radar-pulse::after {
+  content: '';
+  position: absolute;
+  top: -6px;
+  left: -6px;
+  right: -6px;
+  bottom: -6px;
+  border-radius: 50%;
+  border: 2px solid #f93e3e;
+  animation: radarPing 1.5s ease-out infinite;
+}
+@keyframes radarPing {
+  0% { transform: scale(0.8); opacity: 1; }
+  100% { transform: scale(2.5); opacity: 0; }
+}
 `;
 
 // Helper icon
 const markerIcon = L.divIcon({
     className: 'custom-pin',
-    html: `<div style="background:#f93e3e;width:14px;height:14px;border-radius:50%;border:2px solid #fff;box-shadow:0 0 10px rgba(0,0,0,0.5);"></div>`,
+    html: `<div class="radar-pulse"></div>`,
     iconSize: [14, 14], iconAnchor: [7, 7]
 });
 
@@ -158,6 +183,123 @@ const ThermalGrid = () => {
     const [playbackSpeed, setPlaybackSpeed] = useState(1);
     const [playbackTime, setPlaybackTime] = useState(0);
 
+    const [forecastData, setForecastData] = useState(null);
+
+    const [heatmapGeoJSON, setHeatmapGeoJSON] = useState(null);
+    const [isPollingHeatmap, setIsPollingHeatmap] = useState(false);
+    const [heatmapStatus, setHeatmapStatus] = useState('');
+
+    const handleFetchErrorLog = (res, context) => {
+        if (res.status === 200) {
+            console.log(`Frontend [${context}]: 200 OK`);
+        } else if (res.status === 401) {
+            console.error(`Frontend [${context}]: 401 API key invalid/missing.`);
+        } else if (res.status === 429) {
+            console.error(`Frontend [${context}]: 429 Rate limit exceeded.`);
+        } else if (res.status >= 500 || res.status === 0) {
+            console.error(`Frontend [${context}]: ${res.status} Server/CORS Error.`);
+        }
+    };
+
+    const generateHeatmapAPI = async () => {
+        setIsPollingHeatmap(true);
+        setHeatmapStatus('Initializing...');
+        try {
+            // Generate bounding box polygon around target
+            const r = 0.04;
+            const polygon_aoi = {
+                "type": "Polygon",
+                "coordinates": [[
+                    [activeTarget.lng - r, activeTarget.lat - r],
+                    [activeTarget.lng + r, activeTarget.lat - r],
+                    [activeTarget.lng + r, activeTarget.lat + r],
+                    [activeTarget.lng - r, activeTarget.lat + r],
+                    [activeTarget.lng - r, activeTarget.lat - r]
+                ]]
+            };
+
+            const res = await fetch('/api/heatmap', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    polygon_aoi,
+                    date: new Date().toISOString().split('T')[0],
+                    granularity: '80m'
+                })
+            });
+            handleFetchErrorLog(res, 'heatmap init');
+            
+            const data = await res.json();
+            if (!data.activity_id) throw new Error("No activity ID returned");
+
+            setHeatmapStatus('Polling API...');
+            
+            const poll = async () => {
+                try {
+                    const statusRes = await fetch(`/api/heatmap_status?activity_id=${data.activity_id}`);
+                    handleFetchErrorLog(statusRes, 'heatmap status');
+                    const statusData = await statusRes.json();
+                    
+                    if (statusData.status === 'Completed' && statusData.map_data) {
+                        setHeatmapGeoJSON(statusData.map_data);
+                        setIsPollingHeatmap(false);
+                        setHeatmapStatus('');
+                    } else if (statusData.status === 'failed' || statusData.status === 'Failed') {
+                        throw new Error("Heatmap generation failed on server.");
+                    } else if (statusData.status === 'Processing') {
+                        setHeatmapStatus(`Status: Processing...`);
+                        setTimeout(poll, 3000);
+                    } else {
+                        setHeatmapStatus(`Status: ${statusData.status}...`);
+                        setTimeout(poll, 3000);
+                    }
+                } catch (pollErr) {
+                    console.error(pollErr);
+                    setIsPollingHeatmap(false);
+                    setHeatmapStatus('Failed');
+                }
+            };
+            poll();
+        } catch (error) {
+            console.error("Heatmap Generation Failed:", error);
+            setIsPollingHeatmap(false);
+            setHeatmapStatus('Failed');
+        }
+    };
+
+    const clearHeatmap = () => {
+        setHeatmapGeoJSON(null);
+        setHeatmapStatus('');
+        setIsPollingHeatmap(false);
+    };
+
+    const styleHeatmap = (feature) => {
+        const t = feature.properties.tcm;
+        const normalized = Math.max(0, Math.min(1, (t - 25) / 25)); // Map 25C - 50C
+        const hue = (1 - normalized) * 240; 
+        return {
+            fillColor: `hsl(${hue}, 100%, 50%)`,
+            fillOpacity: 0.65,
+            weight: 0.5,
+            color: 'rgba(255,255,255,0.2)'
+        };
+    };
+
+    useEffect(() => {
+        const fetchForecast = async () => {
+            try {
+                const res = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${activeTarget.lat}&longitude=${activeTarget.lng}&daily=temperature_2m_max,temperature_2m_min&past_days=7&forecast_days=2&timezone=auto`);
+                const data = await res.json();
+                if (data && data.daily) {
+                    setForecastData(data.daily);
+                }
+            } catch (err) {
+                console.error("Failed to fetch accurate forecast:", err);
+            }
+        };
+        fetchForecast();
+    }, [activeTarget]);
+
     useEffect(() => {
         let interval;
         if (isPlaying) {
@@ -217,32 +359,40 @@ const ThermalGrid = () => {
         'flash-flood': { val: Math.max(0, (45 + activeTarget.tempDelta * 2)).toFixed(1), unit: 'mm/h', safe: '< 15mm', cautious: '15–40mm', danger: '> 40mm Severe Flood' }
     };
 
-    // Generate 5 day forecast
+    // Generate accurate 7-day past + 12h future forecast using API
     const getForecast = () => {
-        const days = ['Today', 'Mon', 'Tue', 'Wed', 'Thu'];
-        const icons = ['☁️', '☁️', '⛅', '🌧️', '🌧️'];
-        const temps = [
-            { min: 26, max: 34 },
-            { min: 25, max: 33 },
-            { min: 25, max: 33 },
-            { min: 24, max: 32 },
-            { min: 24, max: 32 }
-        ];
+        if (!forecastData || !forecastData.time) {
+            return <div style={{color: '#a3abbb', fontSize: '0.8rem', textAlign: 'center', padding: '2rem 0'}}>Fetching highly accurate area telemetry...</div>;
+        }
 
-        return days.map((day, i) => {
-            const t = temps[i];
-            const minT = t.min + activeTarget.tempDelta;
-            const maxT = t.max + activeTarget.tempDelta;
-            const barWidth = ((maxT - minT) / 15) * 100;
-            const barLeft = ((minT - (-10)) / 60) * 100; // Adjusted for US ranges (-10C to 50C)
+        return forecastData.time.map((dateStr, i) => {
+            // Because Open-Meteo returns yyyy-mm-dd strings, parse it locally
+            const date = new Date(dateStr + "T00:00:00");
+            const today = new Date();
+            const isToday = today.toDateString() === date.toDateString();
+            
+            let dayName = date.toLocaleDateString('en-US', { weekday: 'short' });
+            if (isToday) dayName = 'Today';
+            if (date > today && !isToday) dayName = 'Tmw';
+            
+            const minT = Math.round(forecastData.temperature_2m_min[i]);
+            const maxT = Math.round(forecastData.temperature_2m_max[i]);
+            
+            const barWidth = Math.max(5, ((maxT - minT) / 20) * 100);
+            const barLeft = Math.max(0, ((minT - (-10)) / 60) * 100); // Scale -10C to 50C
+
+            let icon = '☀️';
+            if (maxT > 40) icon = '🔥';
+            else if (maxT > 30) icon = '🌤️';
+            else if (maxT < 10) icon = '❄️';
 
             return (
-                <div className="forecast-row" key={day}>
-                    <div style={{ width: '40px' }}>{day}</div>
-                    <div style={{ fontSize: '1.2rem' }}>{icons[i]}</div>
+                <div className="forecast-row" key={dateStr}>
+                    <div style={{ width: '40px', color: isToday ? '#2bd4c6' : '#fff', fontWeight: isToday ? 'bold' : 'normal' }}>{dayName}</div>
+                    <div style={{ fontSize: '1.2rem' }}>{icon}</div>
                     <div style={{ color: '#a3abbb' }}>{minT}°</div>
                     <div className="temp-bar-container">
-                        <div className="temp-bar-fill" style={{ left: `${barLeft}%`, width: `${barWidth}%` }}></div>
+                        <div className="temp-bar-fill" style={{ left: `${barLeft}%`, width: `${barWidth}%`, background: isToday ? 'linear-gradient(90deg, #2bd4c6, #ff6d3a)' : 'linear-gradient(90deg, #ffd700, #ff6d3a)' }}></div>
                     </div>
                     <div style={{ fontWeight: 600 }}>{maxT}°</div>
                 </div>
@@ -265,12 +415,13 @@ const ThermalGrid = () => {
             </div>
 
             <div className="weather-map-wrapper">
+                <MapLayerControls activeLayer={activeLayer} setActiveLayer={setActiveLayer} />
                 <MapContainer key={mapKey} center={mapCenter} zoom={6} style={{ height: '100%', width: '100%', background: '#101318' }} zoomControl={false}>
 
                     {/* Base terrain map (dark mode) */}
                     <TileLayer
-                        url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
-                        attribution='&copy; CARTO'
+                        url="https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}"
+                        attribution='&copy; Esri'
                     />
 
                     {/* Weather Data Overlay (Geographically Bound to Map) */}
@@ -281,49 +432,71 @@ const ThermalGrid = () => {
                         ]}>
                             <svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="none" style={{ opacity: 0.85, mixBlendMode: 'screen' }}>
                                 <defs>
-                                    <radialGradient id="grad-temperature" cx={`${50 + Math.sin(playbackTime / 10) * 15}%`} cy={`${50 + Math.cos(playbackTime / 10) * 15}%`} r="50%">
+                                    {/* Procedural Noise Filters for Realistic Weather */}
+                                    <filter id="weather-noise" x="-50%" y="-50%" width="200%" height="200%">
+                                        <feTurbulence type="fractalNoise" baseFrequency="0.015" numOctaves="3" result="noise" />
+                                        <feOffset dx={Math.sin(playbackTime / 20) * 30} dy={Math.cos(playbackTime / 20) * 30} in="noise" result="movedNoise" />
+                                        <feDisplacementMap in="SourceGraphic" in2="movedNoise" scale="40" xChannelSelector="R" yChannelSelector="G" />
+                                    </filter>
+                                    
+                                    <filter id="wind-noise" x="-50%" y="-50%" width="200%" height="200%">
+                                        <feTurbulence type="fractalNoise" baseFrequency="0.03 0.005" numOctaves="2" result="noise" />
+                                        <feOffset dx={-(playbackTime * 3) % 150} dy={-(playbackTime * 3) % 150} in="noise" result="movedNoise" />
+                                        <feDisplacementMap in="SourceGraphic" in2="movedNoise" scale="70" xChannelSelector="R" yChannelSelector="G" />
+                                    </filter>
+
+                                    <radialGradient id="grad-temperature" cx="50%" cy="50%" r="45%">
                                         <stop offset="0%" stopColor={`rgba(249, 62, 62, ${0.55 + Math.sin(playbackTime / 5) * 0.2})`} />
-                                        <stop offset="50%" stopColor="rgba(255, 109, 58, 0.4)" />
-                                        <stop offset="100%" stopColor="transparent" />
-                                    </radialGradient>
-                                    <radialGradient id="grad-precipitation" cx={`${100 - (50 + Math.sin(playbackTime / 10) * 15)}%`} cy={`${50 + Math.cos(playbackTime / 10) * 15}%`} r="40%">
-                                        <stop offset="0%" stopColor={`rgba(43, 212, 198, ${0.55 + Math.sin(playbackTime / 5) * 0.2})`} />
-                                        <stop offset="50%" stopColor="rgba(59, 130, 246, 0.4)" />
-                                        <stop offset="100%" stopColor="transparent" />
-                                    </radialGradient>
-                                    <linearGradient id="grad-wind" x1="0%" y1="0%" x2="100%" y2="100%">
-                                        <stop offset="0%" stopColor="rgba(59, 130, 246, 0.1)" />
-                                        <stop offset="50%" stopColor={`rgba(200, 200, 255, ${(0.55 + Math.sin(playbackTime / 5) * 0.2) * 0.4})`} />
-                                        <stop offset="100%" stopColor="rgba(59, 130, 246, 0.05)" />
-                                    </linearGradient>
-                                    <radialGradient id="grad-pressure" cx={`${50 + Math.sin(playbackTime / 10) * 15}%`} cy={`${100 - (50 + Math.cos(playbackTime / 10) * 15)}%`} r="60%">
-                                        <stop offset="0%" stopColor={`rgba(153, 50, 204, ${Math.max(0, (0.55 + Math.sin(playbackTime / 5) * 0.2) - 0.2)})`} />
-                                        <stop offset="100%" stopColor="transparent" />
-                                    </radialGradient>
-                                    <radialGradient id="grad-exceedance" cx={`${50 + Math.sin(playbackTime / 10) * 15}%`} cy={`${50 + Math.cos(playbackTime / 10) * 15}%`} r="35%">
-                                        <stop offset="0%" stopColor={`rgba(255,50,0,${0.55 + Math.sin(playbackTime / 5) * 0.2})`} />
-                                        <stop offset="40%" stopColor="rgba(255,120,0,0.4)" />
-                                        <stop offset="100%" stopColor="transparent" />
-                                    </radialGradient>
-                                    <radialGradient id="grad-persistence" cx="50%" cy="50%" r="45%">
-                                        <stop offset="0%" stopColor={`rgba(180,0,80,${0.55 + Math.sin(playbackTime / 5) * 0.2})`} />
-                                        <stop offset="50%" stopColor="rgba(120,0,100,0.4)" />
+                                        <stop offset="40%" stopColor="rgba(255, 109, 58, 0.5)" />
                                         <stop offset="100%" stopColor="transparent" />
                                     </radialGradient>
                                     
-                                    {/* New Highly Localized Targets */}
-                                    <radialGradient id="grad-urban-heat" cx="50%" cy="50%" r="6%">
-                                        <stop offset="0%" stopColor={`rgba(255, 30, 0, ${(0.55 + Math.sin(playbackTime / 5) * 0.2) + 0.2})`} />
-                                        <stop offset="40%" stopColor="rgba(255, 120, 0, 0.6)" />
+                                    <radialGradient id="grad-precipitation" cx="50%" cy="50%" r="45%">
+                                        <stop offset="0%" stopColor={`rgba(43, 212, 198, ${0.55 + Math.sin(playbackTime / 5) * 0.2})`} />
+                                        <stop offset="50%" stopColor="rgba(59, 130, 246, 0.5)" />
                                         <stop offset="100%" stopColor="transparent" />
                                     </radialGradient>
-                                    <radialGradient id="grad-flash-flood" cx="50%" cy="50%" r="7%">
-                                        <stop offset="0%" stopColor={`rgba(0, 255, 255, ${(0.55 + Math.sin(playbackTime / 5) * 0.2) + 0.1})`} />
-                                        <stop offset="30%" stopColor="rgba(0, 100, 255, 0.7)" />
+                                    
+                                    <linearGradient id="grad-wind" x1="0%" y1="0%" x2="100%" y2="100%">
+                                        <stop offset="0%" stopColor="rgba(59, 130, 246, 0.15)" />
+                                        <stop offset="50%" stopColor={`rgba(200, 200, 255, ${(0.55 + Math.sin(playbackTime / 5) * 0.2) * 0.6})`} />
+                                        <stop offset="100%" stopColor="rgba(59, 130, 246, 0.1)" />
+                                    </linearGradient>
+                                    
+                                    <radialGradient id="grad-pressure" cx="50%" cy="50%" r="55%">
+                                        <stop offset="0%" stopColor={`rgba(153, 50, 204, ${Math.max(0, (0.55 + Math.sin(playbackTime / 5) * 0.2) - 0.1)})`} />
+                                        <stop offset="100%" stopColor="transparent" />
+                                    </radialGradient>
+                                    
+                                    <radialGradient id="grad-exceedance" cx="50%" cy="50%" r="40%">
+                                        <stop offset="0%" stopColor={`rgba(255,50,0,${0.65 + Math.sin(playbackTime / 5) * 0.2})`} />
+                                        <stop offset="45%" stopColor="rgba(255,120,0,0.5)" />
+                                        <stop offset="100%" stopColor="transparent" />
+                                    </radialGradient>
+                                    
+                                    <radialGradient id="grad-persistence" cx="50%" cy="50%" r="45%">
+                                        <stop offset="0%" stopColor={`rgba(180,0,80,${0.65 + Math.sin(playbackTime / 5) * 0.2})`} />
+                                        <stop offset="50%" stopColor="rgba(120,0,100,0.5)" />
+                                        <stop offset="100%" stopColor="transparent" />
+                                    </radialGradient>
+                                    
+                                    <radialGradient id="grad-urban-heat" cx="50%" cy="50%" r="20%">
+                                        <stop offset="0%" stopColor={`rgba(255, 30, 0, ${(0.55 + Math.sin(playbackTime / 5) * 0.2) + 0.3})`} />
+                                        <stop offset="50%" stopColor="rgba(255, 120, 0, 0.6)" />
+                                        <stop offset="100%" stopColor="transparent" />
+                                    </radialGradient>
+                                    
+                                    <radialGradient id="grad-flash-flood" cx="50%" cy="50%" r="25%">
+                                        <stop offset="0%" stopColor={`rgba(0, 255, 255, ${(0.55 + Math.sin(playbackTime / 5) * 0.2) + 0.2})`} />
+                                        <stop offset="40%" stopColor="rgba(0, 100, 255, 0.7)" />
                                         <stop offset="100%" stopColor="transparent" />
                                     </radialGradient>
                                 </defs>
-                                <rect x="0" y="0" width="100" height="100" fill={`url(#grad-${activeLayer})`} />
+                                <rect 
+                                    x="-20" y="-20" width="140" height="140" 
+                                    fill={`url(#grad-${activeLayer})`} 
+                                    filter={activeLayer === 'wind' ? 'url(#wind-noise)' : 'url(#weather-noise)'}
+                                />
                             </svg>
                         </SVGOverlay>
                     )}
@@ -339,6 +512,10 @@ const ThermalGrid = () => {
                         position={[activeTarget.lat, activeTarget.lng]}
                         icon={activeTarget.type === 'vehicle' ? truckIcon : markerIcon}
                     />
+
+                    {heatmapGeoJSON && (
+                        <GeoJSON data={heatmapGeoJSON} style={styleHeatmap} />
+                    )}
 
                     {/* Let user locate themselves on this massive weather map */}
                     <LocateMeControl />
@@ -372,11 +549,11 @@ const ThermalGrid = () => {
                     
                     <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
                         <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.7rem', color: '#8b92a5', marginBottom: '6px', fontWeight: 600 }}>
-                            <span>-12h</span>
+                            <span>-7d</span>
                             <span style={{ color: '#2bd4c6', fontSize: '0.8rem' }}>
                                 LIVE FORECAST
                             </span>
-                            <span>+48h</span>
+                            <span>+12h</span>
                         </div>
                         <input 
                             type="range" 
@@ -408,11 +585,13 @@ const ThermalGrid = () => {
 
                 {/* Left Sidebar: Live Maps Layers */}
                 <div className="map-sidebar" style={{ transition: 'all 0.3s ease', width: isSidebarMinimized ? '50px' : '220px', overflow: 'hidden', padding: isSidebarMinimized ? '1rem 0.5rem' : '1rem' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1rem' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                            <span style={{ fontSize: '1.5rem' }}>🌎</span>
-                            {!isSidebarMinimized && <h3 style={{ margin: 0, fontSize: '1.1rem' }}>EARTH</h3>}
-                        </div>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: isSidebarMinimized ? 'center' : 'space-between', marginBottom: '1rem' }}>
+                        {!isSidebarMinimized && (
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                <span style={{ fontSize: '1.5rem' }}>🌎</span>
+                                <h3 style={{ margin: 0, fontSize: '1.1rem' }}>EARTH</h3>
+                            </div>
+                        )}
                         <button onClick={() => setIsSidebarMinimized(!isSidebarMinimized)} style={{ background: 'none', border: 'none', color: '#a3abbb', cursor: 'pointer', fontSize: '1.2rem' }}>
                             {isSidebarMinimized ? '»' : '«'}
                         </button>
@@ -451,6 +630,15 @@ const ThermalGrid = () => {
                             <button className={`layer-btn ${activeLayer === 'flash-flood' ? 'active' : ''}`} onClick={() => setActiveLayer('flash-flood')} style={{ borderLeft: activeLayer === 'flash-flood' ? '2px solid #06b6d4' : '2px solid transparent' }}>
                                 🌊 Flash Flooding Risk
                             </button>
+                            <div className="layer-section-title" style={{ marginTop: '0.5rem' }}>High-Res API Models</div>
+                            <button className="layer-btn" onClick={generateHeatmapAPI} disabled={isPollingHeatmap} style={{ borderLeft: '2px solid #10b981' }}>
+                                {isPollingHeatmap ? `⏳ ${heatmapStatus}` : '🌡️ Generate Heatmap (API)'}
+                            </button>
+                            {heatmapGeoJSON && (
+                                <button className="layer-btn" onClick={clearHeatmap} style={{ color: '#ef4444' }}>
+                                    🗑️ Clear Map
+                                </button>
+                            )}
                         </>
                     )}
                 </div>
@@ -552,7 +740,7 @@ const ThermalGrid = () => {
                             <span>Temperature</span>
                         </div>
 
-                        <div className="forecast-wrapper">
+                        <div className="forecast-wrapper" style={{ maxHeight: '200px', overflowY: 'auto', paddingRight: '5px' }}>
                             {getForecast()}
                         </div>
 
@@ -606,18 +794,26 @@ const ThermalGrid = () => {
                 🔥 Hyperlocal Heat Alerts & Insights
             </h3>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.5rem' }}>
-                <div className="panel-card" style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
-                    <img src="https://upload.wikimedia.org/wikipedia/commons/thumb/1/1a/Flooded_street_in_Jakarta_%282013%29.jpg/320px-Flooded_street_in_Jakarta_%282013%29.jpg" alt="Flash Flooding" style={{ width: '120px', height: '80px', borderRadius: '8px', flexShrink: 0, objectFit: 'cover' }} />
+                <div 
+                    className="panel-card" 
+                    style={{ display: 'flex', gap: '1rem', alignItems: 'center', cursor: 'pointer', border: activeLayer === 'flash-flood' ? '1px solid #3b82f6' : '' }}
+                    onClick={() => setActiveLayer('flash-flood')}
+                >
+                    <div style={{ fontSize: '2rem', padding: '0 0.5rem' }}>🌧️</div>
                     <div>
                         <h4 style={{ margin: '0 0 0.4rem 0', color: '#3b82f6', fontSize: '1rem' }}>Extreme Heat Dome Traps Setup</h4>
-                        <p style={{ margin: 0, fontSize: '0.8rem', color: '#a3abbb', lineHeight: '1.4' }}>Stalled front and southern heat dome are trapping heavy localized humidity fueling severe flash flood risks across multiple vulnerable counties.</p>
+                        <p style={{ margin: 0, fontSize: '0.8rem', color: '#a3abbb', lineHeight: '1.4' }}>Stalled front and southern heat dome are trapping heavy localized humidity fueling severe flash flood risks across multiple vulnerable counties. (Click to view on map)</p>
                     </div>
                 </div>
-                <div className="panel-card" style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
-                    <img src="https://upload.wikimedia.org/wikipedia/commons/thumb/c/cb/Autumn_in_New_York.jpg/320px-Autumn_in_New_York.jpg" alt="Urban Heat Island" style={{ width: '120px', height: '80px', borderRadius: '8px', flexShrink: 0, objectFit: 'cover' }} />
+                <div 
+                    className="panel-card" 
+                    style={{ display: 'flex', gap: '1rem', alignItems: 'center', cursor: 'pointer', border: activeLayer === 'urban-heat' ? '1px solid #f93e3e' : '' }}
+                    onClick={() => setActiveLayer('urban-heat')}
+                >
+                    <div style={{ fontSize: '2rem', padding: '0 0.5rem' }}>🏙️</div>
                     <div>
                         <h4 style={{ margin: '0 0 0.4rem 0', color: '#f93e3e', fontSize: '1rem' }}>Urban Heat Island Intensification</h4>
-                        <p style={{ margin: 0, fontSize: '0.8rem', color: '#a3abbb', lineHeight: '1.4' }}>Dense urban zones are retaining 3.8°C above rural baselines overnight. Phoenix corridor shows extreme persistence factor of 0.84 — critical for ESG compliance and infrastructure resilience.</p>
+                        <p style={{ margin: 0, fontSize: '0.8rem', color: '#a3abbb', lineHeight: '1.4' }}>Dense urban zones are retaining 3.8°C above rural baselines overnight. Phoenix corridor shows extreme persistence factor of 0.84 — critical for ESG compliance and infrastructure resilience. (Click to view on map)</p>
                     </div>
                 </div>
             </div>

@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { HeatMetricCard } from './HeatMetricCard';
 import './RouteDashboard.css';
 
 const Overview = ({ setActiveProduct }) => {
@@ -24,7 +25,7 @@ const Overview = ({ setActiveProduct }) => {
                             color: '#f93e3e', fontSize: '0.65rem', fontWeight: 700, padding: '4px 12px',
                             borderRadius: '20px', textTransform: 'uppercase', letterSpacing: '1.5px',
                         }}>
-                            FortyGuard Cloud Platform • Hackathon'26 Prototype
+                            FortyGuard Cloud Platform
                         </span>
                     </div>
                     {/* Live API Status bar */}
@@ -32,9 +33,6 @@ const Overview = ({ setActiveProduct }) => {
                         <div style={{ display: 'flex', alignItems: 'center', gap: '6px', background: 'rgba(43,212,198,0.08)', border: '1px solid rgba(43,212,198,0.25)', borderRadius: '20px', padding: '4px 12px' }}>
                             <div style={{ width: '6px', height: '6px', borderRadius: '50%', background: '#2bd4c6', boxShadow: '0 0 8px #2bd4c6' }}></div>
                             <span style={{ fontSize: '0.68rem', color: '#2bd4c6', fontWeight: 600 }}>Status: 200 OK • Async Stream Synced</span>
-                        </div>
-                        <div style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '20px', padding: '4px 12px', fontSize: '0.68rem', color: '#a3abbb', fontWeight: 600 }}>
-                            Credits: {credits.toLocaleString()}
                         </div>
                         <div style={{ background: 'rgba(255, 215, 0, 0.08)', border: '1px solid rgba(255,215,0,0.2)', borderRadius: '20px', padding: '4px 12px', fontSize: '0.68rem', color: '#ffd700', fontWeight: 600 }}>
                             Latency: {latency}ms
@@ -53,6 +51,13 @@ const Overview = ({ setActiveProduct }) => {
                 <p style={{ margin: 0, fontSize: '0.78rem', color: '#8b92a5' }}>
                     Powered by FortyGuard Temperature API • 10mi² Hyperlocal Resolution • 2m Above Ground
                 </p>
+
+                {/* Live Metrics Showcase */}
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1.25rem', marginTop: '2.5rem' }}>
+                    <HeatMetricCard title="Avg Surface Temp" value="42.5" unit="°C" status="Critical" trend="+2.4°C vs last week" />
+                    <HeatMetricCard title="Heat Index" value="38.2" unit="°C" status="Warning" trend="+1.1°C vs last week" />
+                    <HeatMetricCard title="Cooling Demand" value="Peak" unit="" status="Normal" trend="-5% vs last week" />
+                </div>
             </div>
 
             {/* ─── Product Grid ─── */}
