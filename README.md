@@ -1,6 +1,6 @@
 <div align="center">
 
-# 🛡️ GridShield
+# 🛡️ Heat Intelligence
 **AI Thermal Resilience & Parametric Grid Protection**
 
 [![Live Demo](https://img.shields.io/badge/Live_Demo-weather--forecasting--fortyguard.vercel.app-10b981?style=for-the-badge&logo=vercel)](https://weather-forecasting-fortyguard.vercel.app/)
@@ -68,6 +68,6 @@ Follow these steps to spin up the GridShield environment on your local machine.
 
 ### 1. Clone & Install
 ```bash
-git clone [https://github.com/YOUR_GITHUB_USERNAME/YOUR_REPO_NAME.git](https://github.com/YOUR_GITHUB_USERNAME/YOUR_REPO_NAME.git)
-cd YOUR_REPO_NAME
+git clone [https://github.com/Lakshay-tanwar-code/Heat-Intelligence.git](https://github.com/Lakshay-tanwar-code/Heat-Intelligence.git)
+cd Heat-Intelligence
 npm install
